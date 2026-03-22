@@ -66,14 +66,9 @@ class DebateSession:
 
         scores = self.session.tally_votes()
 
-        # Boost / penalise based on critique verdicts
-        for critique in self.session.critiques:
-            pid = critique.proposal_id
-            if critique.verdict == Verdict.SUPPORT:
-                scores[pid] = scores.get(pid, 0) + 1
-            elif critique.verdict == Verdict.OPPOSE:
-                scores[pid] = scores.get(pid, 0) - 1
-            # MODIFY is neutral -- acknowledged but no score change
+        # Don't add critique adjustments to scores — they are for
+        # narrative context, not scoring.  Votes already reflect each
+        # agent's position informed by critiques.
 
         # Pick the proposal with the highest score (tie-break: first submitted)
         best_id: Optional[str] = None

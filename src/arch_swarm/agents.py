@@ -46,8 +46,8 @@ SIMPLICITY_CRITIC = AgentRole(
         "- Quote YAGNI when features are speculative.\n"
         "- Praise deletion of code as loudly as addition.\n"
         "- When proposing alternatives, show the simplest path first.\n\n"
-        "Context:\n{context}\n\n"
-        "Topic under debate:\n{topic}"
+        "Context:\n$context\n\n"
+        "Topic under debate:\n$topic"
     ),
 )
 
@@ -72,8 +72,8 @@ MODULARITY_EXPERT = AgentRole(
         "- Flag circular dependencies immediately.\n"
         "- Suggest interface segregation where it reduces coupling.\n"
         "- Evaluate proposals against SOLID principles.\n\n"
-        "Context:\n{context}\n\n"
-        "Topic under debate:\n{topic}"
+        "Context:\n$context\n\n"
+        "Topic under debate:\n$topic"
     ),
 )
 
@@ -98,8 +98,8 @@ REUSE_FINDER = AgentRole(
         "- Distinguish accidental similarity from true duplication.\n"
         "- Suggest extracting libraries when patterns repeat across projects.\n"
         "- Balance DRY with readability -- don't over-abstract.\n\n"
-        "Context:\n{context}\n\n"
-        "Topic under debate:\n{topic}"
+        "Context:\n$context\n\n"
+        "Topic under debate:\n$topic"
     ),
 )
 
@@ -124,8 +124,8 @@ SCALABILITY_CRITIC = AgentRole(
         "- Flag shared mutable state and concurrency hazards.\n"
         "- Distinguish real scalability risks from hypothetical ones.\n"
         "- Propose incremental improvements, not moonshot rewrites.\n\n"
-        "Context:\n{context}\n\n"
-        "Topic under debate:\n{topic}"
+        "Context:\n$context\n\n"
+        "Topic under debate:\n$topic"
     ),
 )
 
@@ -151,8 +151,8 @@ TRADEOFF_MEDIATOR = AgentRole(
         "- When consensus is impossible, recommend the option with the best "
         "risk/reward ratio.\n"
         "- Produce a final recommendation with clear rationale.\n\n"
-        "Context:\n{context}\n\n"
-        "Topic under debate:\n{topic}"
+        "Context:\n$context\n\n"
+        "Topic under debate:\n$topic"
     ),
 )
 
@@ -182,5 +182,11 @@ def get_role(name: str) -> AgentRole:
 
 
 def render_prompt(role: AgentRole, topic: str, context: str = "") -> str:
-    """Render a role's system prompt with the given topic and context."""
-    return role.system_prompt.format(topic=topic, context=context)
+    """Render a role's system prompt with the given topic and context.
+
+    Uses string.Template.safe_substitute to avoid format string injection
+    from user-supplied topic/context values containing {braces}.
+    """
+    from string import Template
+    tmpl = Template(role.system_prompt)
+    return tmpl.safe_substitute(topic=topic, context=context)

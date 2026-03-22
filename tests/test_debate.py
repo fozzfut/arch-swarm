@@ -88,10 +88,11 @@ class TestDebateSession:
         self, debate_with_proposals: DebateSession
     ) -> None:
         ds = debate_with_proposals
-        # Tie on votes
+        # Critiques are for narrative context, not scoring.
+        # Votes alone determine the winner.
         ds.vote("Agent1", "proposal_a", support=True)
         ds.vote("Agent2", "proposal_b", support=True)
-        # Critique breaks the tie
+        ds.vote("Agent3", "proposal_b", support=True)  # extra vote breaks tie
         crit = DesignCritique(
             proposal_id="proposal_b",
             critic="Reuse Finder",
