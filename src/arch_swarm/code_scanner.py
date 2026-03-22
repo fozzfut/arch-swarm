@@ -6,8 +6,6 @@ import ast
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
-
 
 # ---------------------------------------------------------------------------
 # Result model
@@ -62,28 +60,31 @@ class ArchAnalysis:
 
 
 # ---------------------------------------------------------------------------
-# Scanner
+# Helpers
 # ---------------------------------------------------------------------------
 
 
-def _parse_module(filepath: Path, root: Path) -> Optional[ModuleInfo]:
-    """Parse a single Python file into *ModuleInfo*."""
-    try:
-        source = filepath.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
+def _dotted_name(node: ast.expr) -> str:
+    """Reconstruct a dotted name from an AST node (e.g. ``a.b.C``)."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return _dotted_name(node.value) + "." + node.attr
+    return ast.dump(node)
 
-    rel = str(filepath.relative_to(root)).replace(os.sep, "/")
+
+# ---------------------------------------------------------------------------
+# Scanner helpers -- all accept a pre-parsed AST tree
+# ---------------------------------------------------------------------------
+
+
+def _parse_module(tree: ast.Module, source: str, rel: str) -> ModuleInfo:
+    """Extract *ModuleInfo* from an already-parsed AST tree."""
     mod_name = rel.replace("/", ".").removesuffix(".py")
 
     info = ModuleInfo(path=rel, name=mod_name, lines=source.count("\n") + 1)
 
-    try:
-        tree = ast.parse(source, filename=rel)
-    except SyntaxError:
-        return info  # still return partial info
-
-    for node in ast.walk(tree):
+    for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 info.imports.append(alias.name)
@@ -92,24 +93,22 @@ def _parse_module(filepath: Path, root: Path) -> Optional[ModuleInfo]:
                 info.imports.append(node.module)
         elif isinstance(node, ast.ClassDef):
             info.classes.append(node.name)
+            # Also capture top-level methods inside classes
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                    info.functions.append(child.name)
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            # Only top-level and class-level
+            # Only top-level functions
             info.functions.append(node.name)
 
     return info
 
 
-def _estimate_complexity(filepath: Path) -> int:
+def _estimate_complexity(tree: ast.Module) -> int:
     """Rough cyclomatic-complexity approximation for a file.
 
     Counts branching keywords (if, elif, for, while, except, with, and, or).
     """
-    try:
-        source = filepath.read_text(encoding="utf-8", errors="replace")
-        tree = ast.parse(source)
-    except (OSError, SyntaxError):
-        return 0
-
     complexity = 1  # baseline
     for node in ast.walk(tree):
         if isinstance(node, ast.If | ast.IfExp):
@@ -128,23 +127,14 @@ def _estimate_complexity(filepath: Path) -> int:
     return complexity
 
 
-def _extract_class_hierarchy(filepath: Path) -> dict[str, list[str]]:
+def _extract_class_hierarchy(tree: ast.Module) -> dict[str, list[str]]:
     """Map class -> list of base class names."""
-    try:
-        source = filepath.read_text(encoding="utf-8", errors="replace")
-        tree = ast.parse(source)
-    except (OSError, SyntaxError):
-        return {}
-
     hierarchy: dict[str, list[str]] = {}
-    for node in ast.walk(tree):
+    for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.ClassDef):
             bases: list[str] = []
             for base in node.bases:
-                if isinstance(base, ast.Name):
-                    bases.append(base.id)
-                elif isinstance(base, ast.Attribute):
-                    bases.append(ast.dump(base))
+                bases.append(_dotted_name(base))
             if bases:
                 hierarchy[node.name] = bases
     return hierarchy
@@ -174,13 +164,18 @@ def scan_project(
     analysis = ArchAnalysis(root=str(root))
 
     for fp in py_files:
-        mod = _parse_module(fp, root)
-        if mod is None:
+        try:
+            source = fp.read_text(encoding="utf-8", errors="ignore")
+            tree = ast.parse(source, filename=str(fp))
+        except SyntaxError:
             continue
+
+        rel = str(fp.relative_to(root)).replace(os.sep, "/")
+        mod = _parse_module(tree, source, rel)
         analysis.modules.append(mod)
         analysis.dependency_graph[mod.name] = mod.imports
-        analysis.complexity_scores[mod.name] = _estimate_complexity(fp)
-        analysis.class_hierarchy.update(_extract_class_hierarchy(fp))
+        analysis.complexity_scores[mod.name] = _estimate_complexity(tree)
+        analysis.class_hierarchy.update(_extract_class_hierarchy(tree))
 
     # -- coupling metrics ----------------------------------------------------
     all_names = {m.name for m in analysis.modules}
@@ -188,16 +183,19 @@ def scan_project(
         name: CouplingMetrics(module=name) for name in all_names
     }
 
+    sorted_modules = sorted(all_names, key=len, reverse=True)
+
     for mod in analysis.modules:
         seen: set[str] = set()
         for imp in mod.imports:
-            # Match imports that refer to modules inside the project
-            for target in all_names:
+            # Match only the longest/most-specific module name
+            for target in sorted_modules:
                 if imp == target or imp.startswith(target + "."):
                     if target not in seen and target != mod.name:
                         seen.add(target)
                         coupling_map[mod.name].efferent += 1
                         coupling_map[target].afferent += 1
+                    break  # don't match shorter prefixes
 
     analysis.coupling = list(coupling_map.values())
     return analysis

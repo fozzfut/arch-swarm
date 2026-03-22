@@ -28,7 +28,6 @@ class DebateSession:
     """
 
     session: ArchSession = field(default_factory=lambda: ArchSession(topic=""))
-    _resolved: bool = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -37,7 +36,6 @@ class DebateSession:
     def start_debate(self, topic: str, context: str = "") -> None:
         """Initialise (or reset) the debate with a topic and optional context."""
         self.session = ArchSession(topic=topic, context=context)
-        self._resolved = False
 
     def add_proposal(self, proposal: DesignProposal) -> str:
         """Submit a design proposal.  Returns the proposal id."""
@@ -104,7 +102,6 @@ class DebateSession:
             status=DecisionStatus.ACCEPTED,
         )
         self.session.add_decision(decision)
-        self._resolved = True
         return decision
 
     # ------------------------------------------------------------------

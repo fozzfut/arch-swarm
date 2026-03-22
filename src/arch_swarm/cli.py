@@ -115,25 +115,28 @@ def debate(project_path: str, topic: str, scope: Optional[str]) -> None:
     transcript = ds.get_transcript()
     click.echo("\n" + transcript)
 
-    # 7. Persist the transcript
-    session_dir = _ensure_session_dir()
-    out = session_dir / f"{ds.session.id}.md"
-    out.write_text(transcript, encoding="utf-8")
+    # 7. Persist the transcript (print first so user sees it even if save fails)
+    try:
+        session_dir = _ensure_session_dir()
+        out = session_dir / f"{ds.session.id}.md"
+        out.write_text(transcript, encoding="utf-8")
 
-    meta = session_dir / f"{ds.session.id}.json"
-    meta.write_text(
-        json.dumps(
-            {
-                "id": ds.session.id,
-                "topic": topic,
-                "decision": decision.title if decision else None,
-                "status": decision.status.value if decision else None,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    click.echo(f"\nSession saved: {out}")
+        meta = session_dir / f"{ds.session.id}.json"
+        meta.write_text(
+            json.dumps(
+                {
+                    "id": ds.session.id,
+                    "topic": topic,
+                    "decision": decision.title if decision else None,
+                    "status": decision.status.value if decision else None,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        click.echo(f"\nSession saved: {out}")
+    except OSError as exc:
+        click.echo(f"\nWarning: failed to save: {exc}", err=True)
 
 
 # -----------------------------------------------------------------------

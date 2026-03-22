@@ -1,6 +1,6 @@
 [project]
 name = "arch-swarm-ai"
-version = "0.1.0"
+version = "0.1.1"
 description = "Multi-agent architecture brainstorming -- agents debate code design for simplicity, modularity, and reusability"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -14,7 +14,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["click>=8.0,<9", "pyyaml>=6.0,<8"]
+dependencies = ["click>=8.0,<9"]
 
 [project.scripts]
 arch-swarm = "arch_swarm.cli:main"
@@ -35,5 +35,5 @@ check_untyped_defs = true
 no_implicit_optional = true
 
 [[tool.mypy.overrides]]
-module = ["yaml.*", "click.*"]
+module = ["click.*"]
 ignore_missing_imports = true
