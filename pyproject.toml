@@ -4,7 +4,7 @@ version = "0.1.5"
 description = "Multi-agent architecture brainstorming -- agents debate code design for simplicity, modularity, and reusability"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "fozzfut" }]
+authors = [{ name = "Ilya Sidorov" }]
 readme = "README.md"
 keywords = ["architecture", "design", "ai", "agents", "brainstorming", "modularity"]
 classifiers = [
@@ -14,7 +14,11 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["click>=8.0,<9"]
+dependencies = [
+    "click>=8.0,<9",
+    "mcp>=1.0",
+    "swarm-kb>=0.1.0",
+]
 
 [project.scripts]
 arch-swarm = "arch_swarm.cli:main"
