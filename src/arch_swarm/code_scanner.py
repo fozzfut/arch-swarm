@@ -79,7 +79,11 @@ def _dotted_name(node: ast.expr) -> str:
 
 
 def _parse_module(tree: ast.Module, source: str, rel: str) -> ModuleInfo:
-    """Extract *ModuleInfo* from an already-parsed AST tree."""
+    """Extract *ModuleInfo* from an already-parsed AST tree.
+
+    Note: only top-level imports are captured. Conditional/deferred imports
+    inside functions or if-blocks are intentionally excluded for accuracy.
+    """
     mod_name = rel.replace("/", ".").replace("\\", ".").removesuffix(".py").removesuffix(".__init__")
     if mod_name.startswith("src."):
         mod_name = mod_name[4:]  # strip src. prefix
@@ -95,7 +99,10 @@ def _parse_module(tree: ast.Module, source: str, rel: str) -> ModuleInfo:
                 info.imports.append(node.module)
         elif isinstance(node, ast.ClassDef):
             info.classes.append(node.name)
-            # Also capture top-level methods inside classes
+            # Also capture top-level methods inside classes into the functions
+            # list.  This is intentional: the functions list aggregates all
+            # callable definitions (both module-level functions and class
+            # methods) for use by coupling/complexity metrics.
             for child in ast.iter_child_nodes(node):
                 if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
                     info.functions.append(child.name)

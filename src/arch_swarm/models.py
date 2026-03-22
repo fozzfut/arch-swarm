@@ -107,6 +107,8 @@ class ArchSession:
             raise ValueError(
                 f"Proposal {critique.proposal_id!r} does not exist in session"
             )
+        if any(c.id == critique.id for c in self.critiques):
+            raise ValueError(f"Duplicate critique ID: {critique.id}")
         self.critiques.append(critique)
 
     def add_vote(self, vote: Vote) -> None:

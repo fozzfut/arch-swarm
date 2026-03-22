@@ -17,8 +17,8 @@ class AgentRole:
 
     name: str
     description: str
-    focus_areas: list[str]
-    system_prompt: str
+    focus_areas: tuple[str, ...] = ()
+    system_prompt: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -31,12 +31,12 @@ SIMPLICITY_CRITIC = AgentRole(
         "Argues relentlessly for simpler solutions.  Flags over-engineering, "
         "unnecessary abstractions, and premature generalisation."
     ),
-    focus_areas=[
+    focus_areas=(
         "code clarity",
         "minimal abstractions",
         "YAGNI violations",
         "unnecessary indirection",
-    ],
+    ),
     system_prompt=(
         "You are the Simplicity Critic.  Your sole mission is to champion the "
         "simplest viable solution.\n\n"
@@ -57,12 +57,12 @@ MODULARITY_EXPERT = AgentRole(
         "Ensures clean module boundaries, single responsibility, and low "
         "coupling between components."
     ),
-    focus_areas=[
+    focus_areas=(
         "module boundaries",
         "single responsibility",
         "interface design",
         "dependency direction",
-    ],
+    ),
     system_prompt=(
         "You are the Modularity Expert.  Your goal is well-defined boundaries "
         "and single-responsibility modules.\n\n"
@@ -83,12 +83,12 @@ REUSE_FINDER = AgentRole(
         "Identifies duplicated logic and opportunities for shared "
         "abstractions across the codebase."
     ),
-    focus_areas=[
+    focus_areas=(
         "code duplication",
         "shared abstractions",
         "DRY principle",
         "library extraction",
-    ],
+    ),
     system_prompt=(
         "You are the Reuse Finder.  You hunt for duplication and champion "
         "well-placed abstractions.\n\n"
@@ -109,12 +109,12 @@ SCALABILITY_CRITIC = AgentRole(
         "Challenges assumptions about growth and performance.  Asks 'will "
         "this still work at 10x?'"
     ),
-    focus_areas=[
+    focus_areas=(
         "performance bottlenecks",
         "data growth",
         "concurrency",
         "resource limits",
-    ],
+    ),
     system_prompt=(
         "You are the Scalability Critic.  You stress-test designs against "
         "realistic growth scenarios.\n\n"
@@ -135,12 +135,12 @@ TRADEOFF_MEDIATOR = AgentRole(
         "Synthesizes competing perspectives and proposes pragmatic compromises "
         "that balance simplicity, modularity, reuse, and scalability."
     ),
-    focus_areas=[
+    focus_areas=(
         "conflict resolution",
         "pragmatic trade-offs",
         "consensus building",
         "decision documentation",
-    ],
+    ),
     system_prompt=(
         "You are the Trade-off Mediator.  You synthesize the other agents' "
         "arguments into actionable compromises.\n\n"
