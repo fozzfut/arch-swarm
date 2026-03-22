@@ -11,9 +11,9 @@ class TestScanProject:
     def test_discovers_modules(self, tmp_project: Path) -> None:
         analysis = scan_project(tmp_project, scope="src/myapp")
         names = {m.name for m in analysis.modules}
-        assert "src.myapp.__init__" in names or "src.myapp" in names
-        assert "src.myapp.core" in names
-        assert "src.myapp.utils" in names
+        assert "myapp" in names
+        assert "myapp.core" in names
+        assert "myapp.utils" in names
 
     def test_module_line_counts(self, tmp_project: Path) -> None:
         analysis = scan_project(tmp_project, scope="src/myapp")
@@ -22,7 +22,7 @@ class TestScanProject:
 
     def test_imports_captured(self, tmp_project: Path) -> None:
         analysis = scan_project(tmp_project, scope="src/myapp")
-        core = next(m for m in analysis.modules if m.name == "src.myapp.core")
+        core = next(m for m in analysis.modules if m.name == "myapp.core")
         assert "os" in core.imports
         assert "myapp" in core.imports or any("myapp" in i for i in core.imports)
 
@@ -34,7 +34,7 @@ class TestScanProject:
     def test_complexity_scores(self, tmp_project: Path) -> None:
         analysis = scan_project(tmp_project, scope="src/myapp")
         # core.py has an if-statement so complexity > 1
-        assert analysis.complexity_scores["src.myapp.core"] > 1
+        assert analysis.complexity_scores["myapp.core"] > 1
 
     def test_empty_directory(self, tmp_path: Path) -> None:
         analysis = scan_project(tmp_path, scope="nonexistent")

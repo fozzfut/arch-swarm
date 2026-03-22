@@ -80,7 +80,9 @@ def _dotted_name(node: ast.expr) -> str:
 
 def _parse_module(tree: ast.Module, source: str, rel: str) -> ModuleInfo:
     """Extract *ModuleInfo* from an already-parsed AST tree."""
-    mod_name = rel.replace("/", ".").removesuffix(".py")
+    mod_name = rel.replace("/", ".").replace("\\", ".").removesuffix(".py").removesuffix(".__init__")
+    if mod_name.startswith("src."):
+        mod_name = mod_name[4:]  # strip src. prefix
 
     info = ModuleInfo(path=rel, name=mod_name, lines=source.count("\n") + 1)
 
