@@ -1,6 +1,6 @@
 [project]
 name = "arch-swarm-ai"
-version = "0.1.7"
+version = "0.1.8"
 description = "Multi-agent architecture brainstorming -- agents debate code design for simplicity, modularity, and reusability"
 requires-python = ">=3.10"
 license = { text = "MIT" }

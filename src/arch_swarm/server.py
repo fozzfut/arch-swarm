@@ -2,10 +2,160 @@
 
 import json
 import logging
+import secrets
 from typing import Optional
 from pathlib import Path
 
 _log = logging.getLogger("arch_swarm.server")
+
+
+# ---------------------------------------------------------------------------
+# swarm-kb integration -- post findings, debates, decisions
+# ---------------------------------------------------------------------------
+
+def _post_findings_to_kb(analysis, session_id: str) -> int:
+    """Convert analysis metrics to findings and post to swarm-kb.
+
+    Returns the number of findings posted, or 0 on failure.
+    """
+    try:
+        from swarm_kb.finding_writer import FindingWriter
+        from swarm_kb.config import SuiteConfig
+    except ImportError:
+        _log.warning("swarm-kb not installed; skipping finding post")
+        return 0
+
+    try:
+        config = SuiteConfig.load()
+        writer = FindingWriter(tool="arch", session_id=session_id, config=config)
+    except Exception as exc:
+        _log.warning("Failed to initialise FindingWriter: %s", exc)
+        return 0
+
+    findings: list[dict] = []
+    coupling_map = {c.module: c for c in analysis.coupling}
+
+    # 1. High efferent coupling (>= 8 outgoing dependencies)
+    for c in analysis.coupling:
+        if c.efferent >= 8:
+            sev = "high" if c.efferent >= 12 else "medium"
+            mod = next((m for m in analysis.modules if m.name == c.module), None)
+            file_path = mod.path if mod else c.module.replace(".", "/") + ".py"
+            findings.append({
+                "id": "af-" + secrets.token_hex(3),
+                "file": file_path,
+                "line_start": 1,
+                "line_end": 1,
+                "severity": sev,
+                "category": "architecture",
+                "title": f"High outgoing coupling: {c.module} ({c.efferent} dependencies)",
+                "actual": f"Module {c.module} imports {c.efferent} other project modules",
+                "expected": "Modules should have low efferent coupling (< 8) for maintainability",
+                "suggestion_action": "refactor",
+                "suggestion_detail": (
+                    f"Break {c.module}'s {c.efferent} outgoing dependencies by "
+                    "extracting shared concerns into focused sub-modules"
+                ),
+                "confidence": 0.8,
+                "tags": ["coupling", "modularity", "refactoring"],
+            })
+
+    # 2. Circular dependencies
+    circular = _find_circular_deps(analysis.dependency_graph)
+    for mod_a, mod_b in circular:
+        mod = next((m for m in analysis.modules if m.name == mod_a), None)
+        file_path = mod.path if mod else mod_a.replace(".", "/") + ".py"
+        findings.append({
+            "id": "af-" + secrets.token_hex(3),
+            "file": file_path,
+            "line_start": 1,
+            "line_end": 1,
+            "severity": "high",
+            "category": "architecture",
+            "title": f"Circular dependency: {mod_a} <-> {mod_b}",
+            "actual": f"{mod_a} imports {mod_b} and {mod_b} imports {mod_a}",
+            "expected": "Dependencies should be acyclic (DAG) to prevent build/test fragility",
+            "suggestion_action": "fix",
+            "suggestion_detail": (
+                f"Break cycle by extracting shared types/interfaces into a third module, "
+                f"or use dependency inversion (abstract interface in {mod_a}, "
+                f"implementation in {mod_b})"
+            ),
+            "confidence": 0.9,
+            "tags": ["circular-dependency", "modularity", "architecture"],
+        })
+
+    # 3. High complexity modules (bottleneck risk: complexity >= 30 with afferent >= 2)
+    for mod_name, complexity in analysis.complexity_scores.items():
+        ca = coupling_map.get(mod_name)
+        afferent = ca.afferent if ca else 0
+        if complexity >= 30 and afferent >= 2:
+            risk_score = complexity * afferent
+            mod = next((m for m in analysis.modules if m.name == mod_name), None)
+            file_path = mod.path if mod else mod_name.replace(".", "/") + ".py"
+            findings.append({
+                "id": "af-" + secrets.token_hex(3),
+                "file": file_path,
+                "line_start": 1,
+                "line_end": 1,
+                "severity": "high" if risk_score >= 100 else "medium",
+                "category": "architecture",
+                "title": f"Bottleneck module: {mod_name} (complexity {complexity}, {afferent} dependents)",
+                "actual": (
+                    f"{mod_name} has cyclomatic complexity {complexity} and is imported "
+                    f"by {afferent} modules (risk score: {risk_score})"
+                ),
+                "expected": "High-traffic modules should have low complexity for safe modification",
+                "suggestion_action": "refactor",
+                "suggestion_detail": (
+                    f"Split {mod_name} into smaller, focused modules. "
+                    "Extract complex logic into helpers. Target complexity < 20."
+                ),
+                "confidence": 0.75,
+                "tags": ["complexity", "bottleneck", "refactoring"],
+            })
+
+    # 4. Bloated modules (>= 15 definitions)
+    for mod in analysis.modules:
+        total_defs = len(mod.classes) + len(mod.functions)
+        if total_defs >= 15:
+            findings.append({
+                "id": "af-" + secrets.token_hex(3),
+                "file": mod.path,
+                "line_start": 1,
+                "line_end": 1,
+                "severity": "medium" if total_defs < 25 else "high",
+                "category": "architecture",
+                "title": (
+                    f"Bloated module: {mod.name} "
+                    f"({len(mod.classes)} classes, {len(mod.functions)} functions)"
+                ),
+                "actual": (
+                    f"{mod.name} has {total_defs} top-level definitions "
+                    f"({len(mod.classes)} classes, {len(mod.functions)} functions, "
+                    f"{mod.lines} lines)"
+                ),
+                "expected": "Modules should have a single responsibility; aim for < 10 top-level definitions",
+                "suggestion_action": "refactor",
+                "suggestion_detail": (
+                    f"Split {mod.name} by responsibility: group related "
+                    "classes/functions into sub-modules"
+                ),
+                "confidence": 0.7,
+                "tags": ["bloated-module", "srp", "refactoring"],
+            })
+
+    if not findings:
+        return 0
+
+    try:
+        writer.post_batch(findings)
+        _log.info("Posted %d arch findings to swarm-kb for session %s", len(findings), session_id)
+    except Exception as exc:
+        _log.warning("Failed to post findings to swarm-kb: %s", exc)
+        return 0
+
+    return len(findings)
 
 
 # ---------------------------------------------------------------------------
@@ -630,13 +780,22 @@ def create_mcp_server():
         ctx: Optional[Context] = None,
     ) -> str:
         from .code_scanner import scan_project, format_analysis
+        import uuid
+
         analysis = scan_project(project_path, scope=scope or None)
+        report = format_analysis(analysis)
+
+        # Post findings to swarm-kb
+        session_id = "analyze-" + uuid.uuid4().hex[:12]
+        findings_count = _post_findings_to_kb(analysis, session_id)
+
         return json.dumps({
             "summary": {
                 "total_modules": analysis.total_modules,
                 "total_lines": analysis.total_lines,
             },
-            "report": format_analysis(analysis),
+            "report": report,
+            "findings_posted": findings_count,
         })
 
     @mcp.tool(
@@ -713,10 +872,76 @@ def create_mcp_server():
         except OSError as exc:
             _log.warning("Failed to save debate session: %s", exc)
 
+        # --- Post architectural findings to swarm-kb -----------------------
+        findings_count = _post_findings_to_kb(analysis, ds.session.id)
+
+        # --- Post debate record to swarm-kb --------------------------------
+        debate_record_id = ""
+        try:
+            from swarm_kb.debate_store import DebateStore
+            from swarm_kb.config import SuiteConfig
+
+            config = SuiteConfig.load()
+            debate_store = DebateStore(config.debates_path / "debates.jsonl")
+            debate_record = debate_store.append(
+                topic=topic,
+                source_tool="arch",
+                source_session=ds.session.id,
+                project_path=str(Path(project_path).resolve()),
+                status="resolved",
+                proposals=[
+                    {
+                        "author": p.author,
+                        "title": p.title,
+                        "description": p.description[:200],
+                    }
+                    for p in ds.session.proposals
+                ],
+                winning_proposal=decision.title if decision else "",
+                participant_count=len(ALL_ROLES),
+                vote_tally=ds.session.tally_votes(),
+                tags=[],
+            )
+            debate_record_id = debate_record.id
+            _log.info("Debate record %s posted to swarm-kb", debate_record.id)
+        except ImportError:
+            _log.warning("swarm-kb not installed; skipping debate record post")
+        except Exception as exc:
+            _log.warning("Failed to post debate record to swarm-kb: %s", exc)
+
+        # --- Post accepted decision to swarm-kb ----------------------------
+        try:
+            if decision and decision.status.value == "accepted":
+                from swarm_kb.decision_store import DecisionStore
+                from swarm_kb.config import SuiteConfig as _SC
+
+                dec_config = _SC.load()
+                dec_store = DecisionStore(
+                    dec_config.decisions_path / "decisions.jsonl"
+                )
+                adr = dec_store.append(
+                    title=decision.title,
+                    status="accepted",
+                    rationale=decision.rationale,
+                    context=f"Debate topic: {topic}",
+                    consequences=[],
+                    source_tool="arch",
+                    source_session=ds.session.id,
+                    debate_id=debate_record_id,
+                    project_path=str(Path(project_path).resolve()),
+                    tags=[],
+                )
+                _log.info("Decision %s posted to swarm-kb", adr.id)
+        except ImportError:
+            _log.warning("swarm-kb not installed; skipping decision post")
+        except Exception as exc:
+            _log.warning("Failed to post decision to swarm-kb: %s", exc)
+
         return json.dumps({
             "session_id": ds.session.id,
             "topic": topic,
             "decision": decision.title if decision else None,
+            "findings_posted": findings_count,
             "transcript": transcript,
         })
 
