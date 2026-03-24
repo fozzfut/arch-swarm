@@ -789,6 +789,17 @@ def create_mcp_server():
         session_id = "analyze-" + uuid.uuid4().hex[:12]
         findings_count = _post_findings_to_kb(analysis, session_id)
 
+        # Check for spec findings in swarm-kb
+        spec_findings_count = 0
+        try:
+            from swarm_kb.config import SuiteConfig
+            from swarm_kb.finding_reader import search_all_findings
+            config = SuiteConfig.load()
+            spec_findings = search_all_findings(config, tool="spec")
+            spec_findings_count = len(spec_findings)
+        except (ImportError, Exception):
+            pass
+
         return json.dumps({
             "summary": {
                 "total_modules": analysis.total_modules,
@@ -796,6 +807,7 @@ def create_mcp_server():
             },
             "report": report,
             "findings_posted": findings_count,
+            "spec_findings_available": spec_findings_count,
         })
 
     # ------------------------------------------------------------------
@@ -996,7 +1008,24 @@ def create_mcp_server():
 
         # 1. Scan project
         analysis = scan_project(project_path, scope=scope or None)
-        context = format_analysis(analysis)
+
+        # Load spec report from swarm-kb if available
+        spec_context = ""
+        try:
+            from swarm_kb.config import SuiteConfig
+            from swarm_kb.finding_reader import search_all_findings
+            config = SuiteConfig.load()
+            spec_findings = search_all_findings(config, tool="spec")
+            spec_reports = [f for f in spec_findings if f.get("category") == "spec-report"]
+            if spec_reports:
+                latest = spec_reports[-1]
+                spec_context = latest.get("detail", "") or latest.get("suggestion_detail", "")
+                if spec_context:
+                    spec_context = f"\n\n## Hardware Specification Context\n\n{spec_context}\n"
+        except (ImportError, Exception):
+            pass
+
+        context = format_analysis(analysis) + spec_context
         resolved_path = str(Path(project_path).resolve())
 
         # 2. Post findings to swarm-kb
@@ -1043,6 +1072,8 @@ def create_mcp_server():
         cycles = _find_circular_deps(analysis.dependency_graph)
         if cycles:
             context_parts.append(f"{len(cycles)} circular dependency cycle(s)")
+        if spec_context:
+            context_parts.append("Hardware spec constraints loaded from swarm-kb")
         context_summary = ". ".join(context_parts) + "."
 
         # 5. Select relevant expert roles (cap at max_agents)
