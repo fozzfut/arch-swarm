@@ -853,6 +853,9 @@ def create_mcp_server():
         transcript = ds.get_transcript()
 
         # Save to swarm-kb arch sessions directory
+        # Validate session_id
+        if ".." in ds.session.id or "/" in ds.session.id or "\\" in ds.session.id:
+            return json.dumps({"error": "Invalid session_id"})
         session_dir = Path("~/.swarm-kb/arch/sessions").expanduser()
         session_dir.mkdir(parents=True, exist_ok=True)
         sess_dir = session_dir / ds.session.id
@@ -1047,8 +1050,11 @@ def create_mcp_server():
             )
             debate_id = debate.id
         except ImportError:
-            _log.warning("swarm-kb not installed; generating local debate id")
-            debate_id = "dbt-" + secrets.token_hex(4)
+            # If swarm-kb not available, return error
+            return json.dumps({
+                "error": "swarm-kb not installed. Install with: pip install swarm-kb",
+                "fallback": "Use arch_debate() for automated debates without swarm-kb"
+            })
         except Exception as exc:
             _log.warning("Failed to start swarm-kb debate: %s", exc)
             debate_id = "dbt-" + secrets.token_hex(4)
@@ -1234,6 +1240,10 @@ def create_mcp_server():
         session_id: str,
         ctx: Optional[Context] = None,
     ) -> str:
+        # Validate session_id
+        if ".." in session_id or "/" in session_id or "\\" in session_id:
+            return json.dumps({"error": "Invalid session_id"})
+
         # Try swarm-kb debate engine first
         try:
             from swarm_kb.debate_engine import DebateEngine
