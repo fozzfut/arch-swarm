@@ -1056,8 +1056,11 @@ def create_mcp_server():
                 "fallback": "Use arch_debate() for automated debates without swarm-kb"
             })
         except Exception as exc:
-            _log.warning("Failed to start swarm-kb debate: %s", exc)
-            debate_id = "dbt-" + secrets.token_hex(4)
+            _log.warning("Failed to start debate in swarm-kb: %s", exc)
+            return json.dumps({
+                "error": f"Failed to start debate: {exc}",
+                "fallback": "Use arch_debate() for automated debates"
+            })
 
         # 4. Build context summary from analysis metrics
         context_parts = [
